@@ -1914,10 +1914,15 @@ def _get_commits_and_handle(args):
         if len(extracted) == 0:
             die("No bug references found in specified commits")
         elif len(extracted) > 1:
-            # This could be sensible in the case of "attach updated patches
-            # for all these commits", but for now, just make it an error
-            die("Found multiple bug references specified commits:\n  " +
-                "\n  ".join((handle.get_url() for handle, _ in extracted)))
+            if global_options.use_first_bug:
+                extracted = extracted[:1]
+            else:
+              # This could be sensible in the case of "attach updated patches
+              # for all these commits", but for now, just make it an error
+              die("Found multiple bug references specified commits:\n  " +
+                  "\n  ".join((handle.get_url() for handle, _ in extracted)) +
+                  "\n\nAdd the option --use-first-bug to attach to" +
+                  "\n  " + extracted[0][0].get_url())
 
         # extract_and_collate_bugs returns a list of commits that reference
         # the handle, but we ignore that - we want to attach all of the
@@ -2501,6 +2506,10 @@ def add_whitespace_option():
     parser.add_option("-w", "--ignore-all-space", action="store_true", default=False,
                       help="pass -w option when generating a patch")
 
+def add_firstbug_option():
+    parser.add_option("", "--use-first-bug", action="store_true", default=False,
+                      help="If multiple bugs are referenced in the commit message, use the first")
+
 if command == 'add-url':
     parser.set_usage("git bz add-url [options] <bug reference> (<commit> | <revision range>)");
     min_args = max_args = 2
@@ -2514,6 +2523,7 @@ elif command == 'attach':
     add_add_url_options()
     add_edit_option()
     add_whitespace_option()
+    add_firstbug_option()
     min_args = 1
     max_args = 2
 elif command == 'components':
