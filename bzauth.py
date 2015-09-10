@@ -33,7 +33,7 @@ demandimport.disable()
 import requests
 demandimport.enable()
 
-from mozhg.auth import (
+from auth import (
     getbugzillaauth,
     win_get_folder_path,
 )
