@@ -84,6 +84,10 @@ import urlparse
 from xml.etree.cElementTree import ElementTree
 import platform
 from splitreviewer import split_reviewer
+from auth import getbugzillaauth
+import bzauth
+import bz
+
 
 # Globals
 # =======
@@ -913,10 +917,6 @@ def http_auth_header(user, password):
 # Classes for bug handling
 # ========================
 
-class BugPatch(object):
-    def __init__(self, attach_id):
-        self.attach_id = attach_id
-
 class NoXmlRpcError(Exception):
     pass
 
@@ -940,17 +940,58 @@ def kill_connection(host, https):
         del connections[identifier]
 
 
+class FakeUI:
+    def config(self, key1, key2, default=None):
+        if key1 != 'bugzilla':
+            print 'Expected bugzilla for first argument to config.'
+            exit(-1)
+        try:
+            return git.config('bz.' + key2, get=True)
+        except CalledProcessError:
+            return default
+
+    def configlist(self, key1, key2, arg3):
+        if key1 != 'bugzilla':
+            print 'Expected bugzilla for first argument to configlist.'
+            exit(-1)
+        if key2 != 'firefoxprofile':
+            print 'Expected firefoxprofile for second argument to configlist.'
+            exit(-1)
+        if len(arg3) != 0:
+            print 'Expected [] for third argument to configlist.'
+        # Don't try to support this.
+        return None
+
+    def debug(self, msg):
+        # XXX Ideally, don't always print this.
+        print 'DEBUG: ', msg
+
+    def warn(self, msg):
+        # XXX Ideally, don't always print this.
+        print 'WARN: ', msg
+
+    def prompt(self, something, somethingElse):
+        print 'I haven\'t implemented this'
+        exit(-1)
+
+
 class BugServer(object):
     def __init__(self, host, path, https, auth_user=None, auth_password=None):
-        self.host = host
-        self.path = path
-        self.https = https
-        self.auth_user = auth_user
-        self.auth_password = auth_password
+        self.bugzilla = "%s://%s%s/" % ("https" if https else "http", host, path)
+        self.api_server = '%s/bzapi/' % self.bugzilla.rstrip('/')
 
-        self.cookies = get_bugzilla_cookies(host)
+        ui = FakeUI()
+        self.auth = bzauth.get_auth(ui, self.bugzilla, None)
 
-        self._xmlrpc_proxy = None
+        #self.host = host
+        #self.path = path
+        #self.https = https
+        #self.auth_user = auth_user
+        #self.auth_password = auth_password
+
+        #self.cookies = get_bugzilla_cookies(host)
+
+        #self._xmlrpc_proxy = None
 
     def get_cookie_string(self):
         return ("Bugzilla_login=%s; Bugzilla_logincookie=%s" %
@@ -1187,6 +1228,19 @@ def check_for_success(response, response_data, *args):
 
     return None
 
+class BugAttachment:
+    def __init__(self, raw_attachment):
+        self.raw = raw_attachment
+
+        self.attach_id = raw_attachment['id']
+        self.description = raw_attachment['summary']
+        self.flag_requestees = set(flag.get('requestee') for flag in raw_attachment['flags'])
+
+        # ???
+        #status = attachment.find("status")
+        #patch.status = None if status is None else status.text
+
+
 class Bug(object):
     def __init__(self, server):
         self.server = server
@@ -1196,55 +1250,33 @@ class Bug(object):
         self.short_desc = None
         self.patches = []
 
-    def _load(self, id, attachmentdata=False):
-        url = "/show_bug.cgi?id=" + id + "&ctype=xml&format=default"
-        if not attachmentdata:
-            url += "&excludefield=attachmentdata"
+    def _load(self, bugid, attachmentdata=False):
+        auth = self.server.auth
 
-        response = self.server.send_request("GET", url)
-        if response.status != 200:
-            die ("Failed to retrieve bug information: %d" % response.status)
-
-        etree = ElementTree()
-        etree.parse(response)
-
-        bug = etree.find("bug")
-        error = bug.get("error")
-        if error != None:
-            die ("Failed to retrieve bug information: %s" % error)
-
-        self.id = int(bug.find("bug_id").text)
-        self.short_desc = bug.find("short_desc").text
-        self.bug_status = bug.find("bug_status").text
+        # Save basic bug information.
+        buginfo = bz.get_bug(auth, bugid)
+        self.id = buginfo['id']
+        self.short_desc = buginfo['summary']
+        self.bug_status = buginfo['status']
         if self.bug_status == "RESOLVED":
-            self.resolution = bug.find("resolution").text
-        token = bug.find("token")
-        self.token = None if token is None else token.text
+            self.resolution = buginfo['resolution']
+        self.token = buginfo.get('update_token', None)
 
-        for attachment in bug.findall("attachment"):
-            if attachment.get("ispatch") == "1" and not attachment.get("isobsolete") == "1" :
-                attach_id = int(attachment.find("attachid").text)
-                patch = BugPatch(attach_id)
-                # We have to save fields we might not otherwise care about
-                # (like isprivate) so that we can pass them back when updating
-                # the attachment
-                patch.description = attachment.find("desc").text
-                patch.date = attachment.find("date").text
-                status = attachment.find("status")
-                patch.status = None if status is None else status.text
-                patch.filename = attachment.find("filename").text
-                patch.isprivate = attachment.get("isprivate") == "1"
-                token = attachment.find("token")
-                patch.token = None if token is None else token.text
-                patch.flag_requestees = set(flag.get("requestee") for flag in attachment.findall("flag"))
+        # Get attachment information.
+        # XXX Add support for not getting attachment data.
 
-                if attachmentdata:
-                    data = attachment.find("data").text
-                    patch.data = base64.b64decode(data)
-                else:
-                    patch.data = None
+        try:
+            attachments = bz.get_attachments(auth, bugid)['bugs'][bugid]
+        except Exception as e:
+            print "Loading bug failed:", e.message
+            exit(-1)
 
-                self.patches.append(patch)
+        for a in attachments:
+            if not a["is_patch"]:
+                continue
+            if a["is_obsolete"]:
+                continue
+            self.patches.append(BugAttachment(a))
 
     def get_attachment_token(self):
 
@@ -1465,9 +1497,7 @@ class Bug(object):
                                                                           response.status))
 
     def get_url(self):
-        return "%s://%s/show_bug.cgi?id=%d" % ("https" if self.server.https else "http",
-                                               self.server.host,
-                                               self.id)
+        return "%sshow_bug.cgi?id=%d" % (self.server.bugzilla, self.id)
 
     @staticmethod
     def load(bug_reference, attachmentdata=False):
