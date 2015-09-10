@@ -661,26 +661,8 @@ def http_auth_header(user, password):
 # Classes for bug handling
 # ========================
 
-connections = {}
 
-def get_connection(host, https):
-    identifier = (host, https)
-    if not identifier in connections:
-        if https:
-            connection = httplib.HTTPSConnection(host, 443)
-        else:
-            connection = httplib.HTTPConnection(host, 80)
-
-        connections[identifier] = connection
-
-    return connections[identifier]
-
-def kill_connection(host, https):
-    identifier = (host, https)
-    if identifier in connections:
-        del connections[identifier]
-
-
+# This is a shim implementation of the ui object from Mercurial.
 class FakeUI:
     def config(self, key1, key2, default=None):
         if key1 != 'bugzilla':
@@ -766,34 +748,9 @@ def get_bug_server(host, path, https, auth_user, auth_password):
 
     return servers[identifier]
 
-# Unfortunately, Bugzilla doesn't set a useful status code for
-# form posts.  Because it's very confusing to claim we succeeded
-# but not, we look for text in the response indicating success,
-# and not text indicating failure.
-#
-# We generally look for specific <title> tags - these have been
-# quite stable across versions, though translations will throw
-# us off.
-#
-# *args are regular expressions to search for in response_data
-# that indicate success. Returns the matched regular expression
-# on success, None otherwise
-def check_for_success(response, response_data, *args):
-
-    if response.status != 200:
-        return False
-
-    for pattern in args:
-        m = re.search(pattern, response_data)
-        if m:
-            return m
-
-    return None
 
 class BugAttachment:
     def __init__(self, raw_attachment):
-        self.raw = raw_attachment
-
         self.attach_id = raw_attachment['id']
         self.description = raw_attachment['summary']
         self.flag_requestees = set(flag.get('requestee') for flag in raw_attachment['flags'])
@@ -824,7 +781,6 @@ class Bug(object):
             self.resolution = buginfo['resolution']
         self.token = buginfo.get('update_token', None)
 
-        # Get attachment information.
         # XXX Add support for not getting attachment data.
 
         try:
@@ -870,13 +826,10 @@ class Bug(object):
         if not 'bug_file_loc' in fields:
             fields['bug_file_loc'] = ''
 
-        response = self.server.send_post("/post_bug.cgi", fields)
-        response_data = response.read()
-        m = check_for_success(response, response_data,
-                              r"<title>\s*Bug\s+([0-9]+)")
-        if not m:
-            print response_data
-            die("Failed to create bug, status=%d" % response.status)
+        # XXX post fields, somehow.
+        die('Unimplemented')
+
+        # Reply goes into m. Or something.
 
         self.id = int(m.group(1))
 
@@ -893,7 +846,6 @@ class Bug(object):
         def fake_multi_user_prompt(ui, multi_desc, search_result):
             die('Ambiguous user name')
 
-        # XXX This should happen earlier but just do it here for now.
         valid_users = bzexport.validate_users(ui, self.server.api_server, self.server.auth, review, fake_multi_user_prompt, 'reviewer')
         reviewers = bzexport.select_users(valid_users, review)
 
@@ -984,16 +936,8 @@ class Bug(object):
         # Since we don't send delta_ts we'll never get a mid-air collision
         # This is probably a good thing
 
-        response = self.server.send_post("/process_bug.cgi", changes)
-        response_data = response.read()
-        if not check_for_success(response, response_data,
-                                 r"<title>\s*Bug[\S\s]*processed\s*</title>"):
-
-            # Mid-air collisions would be indicated by
-            # "<title>Mid-air collision!</title>"
-
-            print response_data
-            die ("Failed to update bug %d, status=%d" % (self.id, response.status))
+        # XXX post |changes|.
+        die('Unimplemented')
 
     # Update specified fields of an attachment; keyword arguments are
     # interpreted as field_name=value
@@ -1021,14 +965,9 @@ class Bug(object):
                 field = 'attachments.status'
             fields[field] = value
 
-        response = self.server.send_post("/attachment.cgi", fields)
-        response_data = response.read()
-        if not check_for_success(response, response_data,
-                                 r"<title>\s*Changes\s+Submitted"):
-            print response_data
-            die ("Failed to update attachment %d to bug %d, status=%d" % (patch.attach_id,
-                                                                          self.id,
-                                                                          response.status))
+        # XXX post fields.
+        die('unimplemented')
+
 
     def get_url(self):
         return "%sshow_bug.cgi?id=%d" % (self.server.bugzilla, self.id)
