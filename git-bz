@@ -519,44 +519,6 @@ class BugHandle:
                 (other.host, other.https, other.id))
 
 
-# Based on http://code.activestate.com/recipes/146306/ - Wade Leftwich
-def encode_multipart_formdata(fields, files=None):
-    """
-    fields is a dictionary of { name : value } for regular form fields. if value is a list,
-      one form field is added for each item in the list
-    files is a dictionary of { name : ( filename, content_type, value) } for data to be uploaded as files
-    Return (content_type, body) ready for httplib.HTTPContent instance
-    """
-    BOUNDARY = '----------ThIs_Is_tHe_bouNdaRY_$'
-    CRLF = '\r\n'
-    L = []
-    for key in sorted(fields.keys()):
-        value = fields[key]
-        if isinstance(value, list):
-            for v in value:
-                L.append('--' + BOUNDARY)
-                L.append('Content-Disposition: form-data; name="%s"' % key)
-                L.append('')
-                L.append(v)
-        else:
-            L.append('--' + BOUNDARY)
-            L.append('Content-Disposition: form-data; name="%s"' % key)
-            L.append('')
-            L.append(value)
-    if files:
-        for key in sorted(files.keys()):
-            (filename, content_type, value) = files[key]
-            L.append('--' + BOUNDARY)
-            L.append('Content-Disposition: form-data; name="%s"; filename="%s"' % (key, filename))
-            L.append('Content-Type: %s' % content_type)
-            L.append('')
-            L.append(value)
-    L.append('--' + BOUNDARY + '--')
-    L.append('')
-    body = CRLF.join(L)
-    content_type = 'multipart/form-data; boundary=%s' % BOUNDARY
-    return content_type, body
-
 # Cache of constant-responses per bugzilla server
 # ===============================================
 
