@@ -87,7 +87,7 @@ from splitreviewer import split_reviewer
 from auth import getbugzillaauth
 import bzauth
 import bz
-
+import bzexport
 
 # Globals
 # =======
@@ -964,11 +964,14 @@ class FakeUI:
 
     def debug(self, msg):
         # XXX Ideally, don't always print this.
-        print 'DEBUG: ', msg
+        print 'Debug:', msg
 
     def warn(self, msg):
         # XXX Ideally, don't always print this.
-        print 'WARN: ', msg
+        print 'Warn:', msg
+
+    def write_err(self, msg):
+        print 'Error:', msg
 
     def prompt(self, something, somethingElse):
         print 'I haven\'t implemented this'
@@ -1367,6 +1370,15 @@ class Bug(object):
         print self.get_url()
 
     def create_patch(self, description, comment, filename, data, obsoletes=[], status='none', review=[], superreview=[], feedback=[], ui_review=[]):
+        ui = FakeUI()
+
+        def fake_multi_user_prompt(ui, multi_desc, search_result):
+            die('Ambiguous user name')
+
+        # XXX This should happen earlier but just do it here for now.
+        valid_users = bzexport.validate_users(ui, self.server.api_server, self.server.auth, review, fake_multi_user_prompt, 'reviewer')
+        reviewers = bzexport.select_users(valid_users, review)
+
         fields = {
             'ids': [self.id],
             'data': base64.b64encode(data),
@@ -1401,8 +1413,8 @@ class Bug(object):
         superreview_flag = 5
         feedback_flag = 607
         ui_review_flag = 203
-        if review:
-            if review[0] == ':me+':
+        if reviewers:
+            if reviewers[0] == ':me+':
                 fields['flags'].append({
                     'name': 'review',
                     'status': '+',
@@ -1410,7 +1422,7 @@ class Bug(object):
                     'new': True,
                 })
             else:
-                for requestee in review:
+                for requestee in reviewers:
                     fields['flags'].append({
                         'name': 'review',
                         'requestee': requestee,

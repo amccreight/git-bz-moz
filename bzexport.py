@@ -31,6 +31,7 @@ try:
 except:
     import pickle
 import bz
+import bzauth
 
 # requests doesn't like lazy importing
 demandimport.disable()
@@ -41,6 +42,10 @@ from auth import (
     getbugzillaauth,
     win_get_folder_path,
 )
+
+# XXX This name is different from bzexport.
+INI_CACHE_FILENAME = ".gitbz"
+
 
 
 # Returns [ { search_string: original, names: [ str ], real_names: [ str ] } ]
@@ -106,3 +111,11 @@ def validate_users(ui, api_server, auth, search_strings, multi_callback, multi_d
             search_failed = True
     return None if search_failed else results
 
+
+def select_users(valid, keys):
+    if valid is None:
+        return None
+    users = []
+    for key in keys:
+        users.extend(valid[key])
+    return users
