@@ -78,10 +78,8 @@ import shutil
 import sys
 import tempfile
 import time
-import xmlrpclib
 import urllib
 import urlparse
-from xml.etree.cElementTree import ElementTree
 import platform
 from splitreviewer import split_reviewer
 from auth import getbugzillaauth
@@ -917,9 +915,6 @@ def http_auth_header(user, password):
 # Classes for bug handling
 # ========================
 
-class NoXmlRpcError(Exception):
-    pass
-
 connections = {}
 
 def get_connection(host, https):
@@ -985,20 +980,6 @@ class BugServer(object):
 
         ui = FakeUI()
         self.auth = bzauth.get_auth(ui, self.bugzilla, None)
-
-        #self.host = host
-        #self.path = path
-        #self.https = https
-        #self.auth_user = auth_user
-        #self.auth_password = auth_password
-
-        #self.cookies = get_bugzilla_cookies(host)
-
-        #self._xmlrpc_proxy = None
-
-    def get_cookie_string(self):
-        return ("Bugzilla_login=%s; Bugzilla_logincookie=%s" %
-                (self.cookies['Bugzilla_login'], self.cookies['Bugzilla_logincookie']))
 
     def send_request(self, method, url, data=None, headers={}):
         headers = dict(headers)
@@ -1096,47 +1077,8 @@ class BugServer(object):
         content_type, body = encode_multipart_formdata(fields, files)
         return self.send_request("POST", url, data=body, headers={ 'Content-Type': content_type })
 
-    def get_xmlrpc_proxy(self):
-        if self._xmlrpc_proxy is None:
-            uri = "%s://%s%s/xmlrpc.cgi" % ("https" if self.https else "http",
-                                          self.host, self.path)
-            if self.https:
-                transport = SafeBugTransport(self)
-            else:
-                transport = BugTransport(self)
-            self._xmlrpc_proxy = xmlrpclib.ServerProxy(uri, transport)
-
-        return self._xmlrpc_proxy
-
     def _product_id(self, product_name):
-        # This way works with newer bugzilla; older Bugzilla doesn't support names:
-        try:
-            response = self.get_xmlrpc_proxy().Product.get({ 'names': product_name, 'include_fields': ['id', 'name'] })
-            products = response['products']
-            if len(products) > 0:
-                return products[0]['id']
-        except xmlrpclib.Fault, e:
-            pass
-        except xmlrpclib.ProtocolError, e:
-            pass
-
-        # This should work with any bugzilla that supports xmlrpc, but will be slow
-        print >>sys.stderr, "Searching for product ID ...",
-        try:
-            response = self.get_xmlrpc_proxy().Product.get_accessible_products({})
-            ids = response['ids']
-            response = self.get_xmlrpc_proxy().Product.get_products({ 'ids': ids, 'include_fields': ['id', 'name']})
-            for p in response['products']:
-                if p['name'] == product_name:
-                    print >>sys.stderr, "found it"
-                    return p['id']
-        except xmlrpclib.Fault, e:
-            pass
-        except xmlrpclib.ProtocolError, e:
-            pass
-
-        print >>sys.stderr, "failed"
-        return None
+        die('unimplemented')
 
     def product_id(self, product_name):
         key = 'product_id_' + urllib.quote(product_name)
@@ -1151,20 +1093,7 @@ class BugServer(object):
     # Query the server for the legal values of the given field; returns an
     # array, or None if the query failed
     def _legal_values(self, field):
-        try:
-            response = self.get_xmlrpc_proxy().Bug.legal_values({ 'field': field })
-            cache.set(self.host, 'legal_' + field, response['values'])
-            return response['values']
-        except xmlrpclib.Fault, e:
-            if e.faultCode == -32000: # https://bugzilla.mozilla.org/show_bug.cgi?id=513511
-                return None
-            raise
-        except xmlrpclib.ProtocolError, e:
-            if e.errcode == 500: # older bugzilla versions die this way
-                return None
-            elif e.errcode == 404: # really old bugzilla, no XML-RPC
-                return None
-            raise
+        die('unimplemented')
 
     def legal_values(self, field):
         try:
@@ -1173,26 +1102,6 @@ class BugServer(object):
             values = self._legal_values(field)
             cache.set(self.host, 'legal_' + field, values)
             return values
-
-# mixin for xmlrpclib.Transport classes to add cookies
-class CookieTransportMixin(object):
-    def send_request(self, connection, *args):
-        xmlrpclib.Transport.send_request(self, connection, *args)
-        cookie = self.server.get_cookie_string()
-        if isinstance(cookie, unicode):
-            cookie = cookie.encode('UTF-8')
-        connection.putheader("Cookie", cookie)
-        connection.putheader("Authorization", http_auth_header(self.server.auth_user, self.server.auth_password))
-
-class BugTransport(CookieTransportMixin, xmlrpclib.Transport):
-    def __init__(self, server):
-        xmlrpclib.Transport.__init__(self)
-        self.server = server
-
-class SafeBugTransport(CookieTransportMixin, xmlrpclib.SafeTransport):
-    def __init__(self, server):
-        xmlrpclib.SafeTransport.__init__(self)
-        self.server = server
 
 servers = {}
 
