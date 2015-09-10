@@ -80,14 +80,23 @@ def create_attachment(auth, bug, contents,
 
     if reviewers:
         assert review_flag_id
-        for requestee in reviewers:
+
+        if reviewers[0] == ':me+':
             o['flags'].append({
                 'name': 'review',
-                'requestee': requestee,
-                'status': '?',
+                'status': '+',
                 'type_id': review_flag_id,
                 'new': True,
             })
+        else:
+            for requestee in reviewers:
+                o['flags'].append({
+                    'name': 'review',
+                    'requestee': requestee,
+                    'status': '?',
+                    'type_id': review_flag_id,
+                    'new': True,
+                })
 
     if feedback:
         assert feedback_flag_id
