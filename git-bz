@@ -1367,21 +1367,25 @@ class Bug(object):
         print self.get_url()
 
     def create_patch(self, description, comment, filename, data, obsoletes=[], status='none', review=[], superreview=[], feedback=[], ui_review=[]):
-        fields = {}
-        fields['bugid'] = str(self.id)
-        token = self.get_attachment_token()
-        if token:
-          fields['token'] = token
-        fields['action'] = 'insert'
-        fields['ispatch'] = '1'
-        fields['attachments.status'] = status
-        fields['description'] = description
+        fields = {
+            'ids': [self.id],
+            'data': base64.b64encode(data),
+            'encoding': 'base64',
+            'file_name': filename,
+            'summary': description,
+            'is_patch': True,
+            'content_type': 'text/plain',
+            'flags': [],
+        }
+
         if comment:
             fields['comment'] = comment
-        if obsoletes:
-            # this will produce multiple parts in the encoded data with the
-            # name 'obsolete' for each item in the list
-            fields['obsolete'] = map(str, obsoletes)
+
+        # ???
+        #if obsoletes:
+        #    # this will produce multiple parts in the encoded data with the
+        #    # name 'obsolete' for each item in the list
+        #    fields['obsolete'] = map(str, obsoletes)
 
         # Support for flagging for review/superreview/feedback/ui-review. I have
         # no idea if this works on installations other than
@@ -1390,54 +1394,54 @@ class Bug(object):
         # Note that the Firefox component for some reason uses a review flag with
         # ID 748.  We submit both at the same time, and the server picks the one
         # that applies to the component.
-        review_flag = 4
-        firefox_review_flag = 748
+
+        # XXX handle the firefox review flag thing properly, like bzexport.
+        review_flag_id = 4
+        firefox_review_flag_id = 748
         superreview_flag = 5
         feedback_flag = 607
         ui_review_flag = 203
         if review:
             if review[0] == ':me+':
-                fields['flag_type-%d' % review_flag] = '+'
-                fields['flag_type-%d' % firefox_review_flag] = '+'
+                fields['flags'].append({
+                    'name': 'review',
+                    'status': '+',
+                    'type_id': review_flag_id,
+                    'new': True,
+                })
             else:
-                fields['flag_type-%d' % review_flag] = '?'
-                fields['flag_type-%d' % firefox_review_flag] = '?'
-                fields['requestee_type-%d' % review_flag] = ",".join(review)
-                fields['requestee_type-%d' % firefox_review_flag] = ",".join(review)
-        if superreview:
-            if superreview[0] == ':me+':
-                fields['flag_type-%d' % superreview_flag] = '+'
-            else:
-                fields['flag_type-%d' % superreview_flag] = '?'
-                fields['requestee_type-%d' % superreview_flag] = ",".join(superreview)
-        if feedback:
-            if feedback[0] == ':me+':
-                fields['flag_type-%d' % feedback_flag] = '+'
-            else:
-                fields['flag_type-%d' % feedback_flag] = '?'
-                fields['requestee_type-%d' % feedback_flag] = ",".join(feedback)
-        if ui_review:
-            if ui_review[0] == ':me+':
-                fields['flag_type-%d' % ui_review_flag] = '+'
-            else:
-                fields['flag_type-%d' % ui_review_flag] = '?'
-                fields['requestee_type-%d' % ui_review_flag] = ",".join(ui_review)
+                for requestee in review:
+                    fields['flags'].append({
+                        'name': 'review',
+                        'requestee': requestee,
+                        'status': '?',
+                        'type_id': review_flag_id,
+                        'new': True,
+                    })
 
-        files = { 'data': (filename, 'text/plain; charset=UTF-8', data) }
+        # XXX Add back support for these other flags.
+        #if superreview:
+        #    if superreview[0] == ':me+':
+        #        fields['flag_type-%d' % superreview_flag] = '+'
+        #    else:
+        #        fields['flag_type-%d' % superreview_flag] = '?'
+        #        fields['requestee_type-%d' % superreview_flag] = ",".join(superreview)
+        #if feedback:
+        #    if feedback[0] == ':me+':
+        #        fields['flag_type-%d' % feedback_flag] = '+'
+        #    else:
+        #        fields['flag_type-%d' % feedback_flag] = '?'
+        #        fields['requestee_type-%d' % feedback_flag] = ",".join(feedback)
+        #if ui_review:
+        #    if ui_review[0] == ':me+':
+        #        fields['flag_type-%d' % ui_review_flag] = '+'
+        #    else:
+        #        fields['flag_type-%d' % ui_review_flag] = '?'
+        #        fields['requestee_type-%d' % ui_review_flag] = ",".join(ui_review)
 
-        response = self.server.send_post("/attachment.cgi", fields, files)
-        response_data = response.read()
-        if not check_for_success(response, response_data,
-                                 # Older bugzilla's used this for successful attachments
-                                 r"<title>\s*Changes\s+Submitted",
-                                 # Newer bugzilla's, use, instead:
-                                 r"<title>\s*Attachment\s+\d+\s+added"):
-            response_match = re.search("<title>([^<]+)</title>", response_data)
-            if response_match:
-                print 'Error response from bugzilla:', response_match.group(1)
-            else:
-                print 'Error response from bugzilla.'
-            die ("Failed to attach patch to bug %d, status=%d" % (self.id, response.status))
+        # XXX What to do with the return value?
+        if not self.server.auth.rest_request('POST', 'bug/%s/attachment' % self.id, data=fields):
+            die('Some kind of error!?!?')
 
         print "Attached %s" % filename
 
