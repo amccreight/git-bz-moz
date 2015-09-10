@@ -749,6 +749,59 @@ def get_bug_server(host, path, https, auth_user, auth_password):
     return servers[identifier]
 
 
+# XXX handle the firefox review flag id properly, like bzexport.
+# XXX this won't handle the review flag for Firefox, which is 748.
+class BugzillaRequesteeFlag:
+    def __init__(self, flag_name, flag_id, description, requestees):
+        self.flag_name = flag_name
+        self.flag_id = flag_id
+        self.description = description
+        self.requestees = requestees
+
+    def add_requestee(self, requestee):
+        self.requestees.append(requestee)
+
+    def validate(self, ui, server):
+        def fake_multi_user_prompt(ui, multi_desc, search_result):
+            die('Ambiguous user name')
+
+        if len(self.requestees) == 0:
+            return
+
+        if self.requestees[0] == ':me+':
+            self.requestees = [self.requestees[0]]
+        else:
+            valid_users = bzexport.validate_users(ui, server.api_server, server.auth, self.requestees,
+                                                  fake_multi_user_prompt, self.description)
+            self.requestees = bzexport.select_users(valid_users, self.requestees)
+            if self.requestees == None:
+                # XXX Does this make sense? Should we fail?
+                self.requestees = []
+
+    def serialize(self, l):
+        if len(self.requestees) == 0:
+            return
+
+        if self.requestees[0] == ':me+':
+            # XXX What about the rest of the flags, if any?
+            l.append({
+                'name': self.flag_name,
+                'status': '+',
+                'type_id': self.flag_id,
+                'new': True,
+            })
+            return
+
+        for requestee in self.requestees:
+            l.append({
+                'name': self.flag_name,
+                'requestee': requestee,
+                'status': '?',
+                'type_id': self.flag_id,
+                'new': True,
+            })
+
+
 class BugAttachment:
     def __init__(self, raw_attachment):
         self.attach_id = raw_attachment['id']
@@ -839,93 +892,6 @@ class Bug(object):
         print "Successfully created"
         print "Bug %d - %s" % (self.id, short_desc)
         print self.get_url()
-
-    def create_patch(self, description, comment, filename, data, obsoletes=[], status='none', review=[], superreview=[], feedback=[], ui_review=[]):
-        ui = FakeUI()
-
-        def fake_multi_user_prompt(ui, multi_desc, search_result):
-            die('Ambiguous user name')
-
-        valid_users = bzexport.validate_users(ui, self.server.api_server, self.server.auth, review, fake_multi_user_prompt, 'reviewer')
-        reviewers = bzexport.select_users(valid_users, review)
-
-        fields = {
-            'ids': [self.id],
-            'data': base64.b64encode(data),
-            'encoding': 'base64',
-            'file_name': filename,
-            'summary': description,
-            'is_patch': True,
-            'content_type': 'text/plain',
-            'flags': [],
-        }
-
-        if comment:
-            fields['comment'] = comment
-
-        # ???
-        #if obsoletes:
-        #    # this will produce multiple parts in the encoded data with the
-        #    # name 'obsolete' for each item in the list
-        #    fields['obsolete'] = map(str, obsoletes)
-
-        # Support for flagging for review/superreview/feedback/ui-review. I have
-        # no idea if this works on installations other than
-        # bugzilla.mozilla.org. These flag numbers are specified at
-        # https://api-dev.bugzilla.mozilla.org/latest/configuration.
-        # Note that the Firefox component for some reason uses a review flag with
-        # ID 748.  We submit both at the same time, and the server picks the one
-        # that applies to the component.
-
-        # XXX handle the firefox review flag thing properly, like bzexport.
-        review_flag_id = 4
-        firefox_review_flag_id = 748
-        superreview_flag = 5
-        feedback_flag = 607
-        ui_review_flag = 203
-        if reviewers:
-            if reviewers[0] == ':me+':
-                fields['flags'].append({
-                    'name': 'review',
-                    'status': '+',
-                    'type_id': review_flag_id,
-                    'new': True,
-                })
-            else:
-                for requestee in reviewers:
-                    fields['flags'].append({
-                        'name': 'review',
-                        'requestee': requestee,
-                        'status': '?',
-                        'type_id': review_flag_id,
-                        'new': True,
-                    })
-
-        # XXX Add back support for these other flags.
-        #if superreview:
-        #    if superreview[0] == ':me+':
-        #        fields['flag_type-%d' % superreview_flag] = '+'
-        #    else:
-        #        fields['flag_type-%d' % superreview_flag] = '?'
-        #        fields['requestee_type-%d' % superreview_flag] = ",".join(superreview)
-        #if feedback:
-        #    if feedback[0] == ':me+':
-        #        fields['flag_type-%d' % feedback_flag] = '+'
-        #    else:
-        #        fields['flag_type-%d' % feedback_flag] = '?'
-        #        fields['requestee_type-%d' % feedback_flag] = ",".join(feedback)
-        #if ui_review:
-        #    if ui_review[0] == ':me+':
-        #        fields['flag_type-%d' % ui_review_flag] = '+'
-        #    else:
-        #        fields['flag_type-%d' % ui_review_flag] = '?'
-        #        fields['requestee_type-%d' % ui_review_flag] = ",".join(ui_review)
-
-        # XXX What to do with the return value?
-        if not self.server.auth.rest_request('POST', 'bug/%s/attachment' % self.id, data=fields):
-            die('Some kind of error!?!?')
-
-        print "Attached %s" % filename
 
     # Update specified fields of a bug; keyword arguments are interpreted
     # as field_name=value
@@ -1419,7 +1385,24 @@ def attach_commits(bug, commits, fill_comment=True, edit=False, status='none'):
         hgstring += "# User " + commit_range.author + '\n\n'
         patch = hgstring + patch
 
-        bug.create_patch(description, comment, filename, patch, obsoletes=obsoletes, status=status, review=review, superreview=superreview, feedback=feedback, ui_review=ui_review)
+        requestee_flags = set([])
+        requestee_flags.add(BugzillaRequesteeFlag('review', 4, 'reviewer', review))
+        requestee_flags.add(BugzillaRequesteeFlag('superreview', 5, 'superreviewer', superreview))
+        requestee_flags.add(BugzillaRequesteeFlag('feedback', 607, 'feedbacker', feedback))
+        requestee_flags.add(BugzillaRequesteeFlag('ui_review', 203, 'UI reviewer', ui_review))
+
+        ui = FakeUI()
+        for f in requestee_flags:
+            f.validate(ui, bug.server)
+
+        # XXX Add back support for obsoleting attachments.
+
+        bz.create_attachment(bug.server.auth, bug.id, patch,
+                             description, filename, comment,
+                             requestee_flags)
+
+        print "Attached " + filename
+
 
 def _get_commits_and_handle(args):
     if len(args) == 1:

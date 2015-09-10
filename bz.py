@@ -60,8 +60,7 @@ def create_bug(token, product, component, version, title, description,
 def create_attachment(auth, bug, contents,
                       description="attachment",
                       filename="attachment", comment="",
-                      reviewers=None, review_flag_id=None,
-                      feedback=None, feedback_flag_id=None):
+                      requestee_flags=set([])):
     """
     Post an attachment to a bugzilla bug using BzAPI.
     """
@@ -78,40 +77,14 @@ def create_attachment(auth, bug, contents,
         'flags': [],
     }
 
-    if reviewers:
-        assert review_flag_id
-
-        if reviewers[0] == ':me+':
-            o['flags'].append({
-                'name': 'review',
-                'status': '+',
-                'type_id': review_flag_id,
-                'new': True,
-            })
-        else:
-            for requestee in reviewers:
-                o['flags'].append({
-                    'name': 'review',
-                    'requestee': requestee,
-                    'status': '?',
-                    'type_id': review_flag_id,
-                    'new': True,
-                })
-
-    if feedback:
-        assert feedback_flag_id
-        for requestee in feedback:
-            o['flags'].append({
-                'name': 'feedback',
-                'requestee': requestee,
-                'status': '?',
-                'type_id': feedback_flag_id,
-                'new': True,
-            })
+    for f in requestee_flags:
+        f.serialize(o['flags'])
 
     if comment:
         o['comment'] = comment
 
+    print 'I did something'
+    exit(-1)
     return auth.rest_request('POST', 'bug/%s/attachment' % bug, data=o)
 
 
