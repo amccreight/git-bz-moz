@@ -83,8 +83,6 @@ def create_attachment(auth, bug, contents,
     if comment:
         o['comment'] = comment
 
-    print 'I did something'
-    exit(-1)
     return auth.rest_request('POST', 'bug/%s/attachment' % bug, data=o)
 
 
@@ -132,5 +130,6 @@ def update_bug(auth, bugid, bugdata):
 
 
 def get_product_components(auth, product):
+    # XXX Unfortunately this is quite slow. Hopefully there is a better way to do it.
     product_info = auth.rest_request('GET', 'product?names=%s' % product)
     return product_info['products'][0]['components']
