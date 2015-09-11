@@ -131,5 +131,6 @@ def update_bug(auth, bugid, bugdata):
     return auth.rest_request('PUT', 'bug/%s' % bugid, bugdata)
 
 
-def get_product_info(auth, prod):
-    return auth.rest_request('GET', 'product?names=%s' % prod)
+def get_product_components(auth, product):
+    product_info = auth.rest_request('GET', 'product?names=%s' % product)
+    return product_info['products'][0]['components']

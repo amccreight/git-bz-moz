@@ -1947,8 +1947,7 @@ def do_components(*args):
         if not product:
             die("<product> not specified and no default product is configured" + PRODUCT_COMPONENT_HELP)
 
-    product_info = bz.get_product_info(server.auth, product)
-    components = product_info['products'][0]['components']
+    components = bz.get_product_components(server.auth, product)
     for component in components:
         print component['name']
 
