@@ -966,9 +966,9 @@ class Bug(object):
 # =============
 
 def commit_needs_url(commit, bug_id):
-        pat = re.compile(r"(?<!\d)%d(?!\d)" % bug_id)
-        return (pat.search(commit.subject) is None and
-                pat.search(get_body(commit)) is None)
+    pat = re.compile(r"(?<!\d)%d(?!\d)" % bug_id)
+    return (pat.search(commit.subject) is None and
+            pat.search(get_body(commit)) is None)
 
 def check_add_url(commits, bug_id=None, is_add_url=False):
     if bug_id != None:
