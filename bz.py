@@ -129,3 +129,7 @@ def update_bug(auth, bugid, bugdata):
     Mid-air collisions are possible.
     """
     return auth.rest_request('PUT', 'bug/%s' % bugid, bugdata)
+
+
+def get_product_info(auth, prod):
+    return auth.rest_request('GET', 'product?names=%s' % prod)

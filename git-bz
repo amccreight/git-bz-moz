@@ -658,6 +658,7 @@ def die(message):
 def http_auth_header(user, password):
     return 'Basic ' + base64.encodestring("%s:%s" % (user, password)).strip()
 
+
 # Classes for bug handling
 # ========================
 
@@ -1946,19 +1947,11 @@ def do_components(*args):
         if not product:
             die("<product> not specified and no default product is configured" + PRODUCT_COMPONENT_HELP)
 
-    product_id = server.product_id(product)
-    if product_id is None:
-        die("No such product " + product)
+    product_info = bz.get_product_info(server.auth, product)
+    components = product_info['products'][0]['components']
+    for component in components:
+        print component['name']
 
-    try:
-        response = server.get_xmlrpc_proxy().Bug.legal_values({'product_id': product_id, 'field': 'component'})
-        components = response['values']
-        for component in components:
-            print component
-    except xmlrpclib.Fault, e:
-        die(e.faultString)
-    except xmlrpclib.ProtocolError, e:
-        die("Unable to retrieve components: %s" % e.errmsg)
 
 ################################################################################
 
