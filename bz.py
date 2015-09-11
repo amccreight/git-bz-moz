@@ -90,14 +90,16 @@ def get_attachments(auth, bug):
     return auth.rest_request('GET', 'bug/%s/attachment' % bug)
 
 
-def obsolete_attachment(auth, attachment):
+def obsolete_attachment_id(auth, attachment_id):
     o = {
-        'ids': [attachment['id']],
+        'ids': [attachment_id],
         'is_obsolete': True,
     }
-    return auth.rest_request('PUT', 'bug/attachment/%s' % attachment['id'],
+    return auth.rest_request('PUT', 'bug/attachment/%s' % attachment_id,
         data=o)
 
+def obsolete_attachment(auth, attachment):
+    obsolete_attachment_id(auth, attachment['id'])
 
 def find_users(auth, search_string):
     return auth.rest_request('GET', 'user', params={'match': [search_string]})
