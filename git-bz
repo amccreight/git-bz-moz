@@ -808,10 +808,10 @@ class BugAttachment:
         self.attach_id = raw_attachment['id']
         self.description = raw_attachment['summary']
         self.flag_requestees = set(flag.get('requestee') for flag in raw_attachment['flags'])
+        self.data = base64.b64decode(raw_attachment['data'])
 
-        # ???
-        #status = attachment.find("status")
-        #patch.status = None if status is None else status.text
+        # I don't actually see any status fields on bmo.
+        self.status = raw_attachment.get('status', None)
 
 
 class Bug(object):
