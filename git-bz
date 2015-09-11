@@ -1396,7 +1396,9 @@ def attach_commits(bug, commits, fill_comment=True, edit=False, status='none'):
         for f in requestee_flags:
             f.validate(ui, bug.server)
 
-        # XXX Add back support for obsoleting attachments.
+        for attachment_id in obsoletes:
+            print 'Obsoleting attachment', attachment_id
+            bz.obsolete_attachment_id(bug.server.auth, attachment_id)
 
         bz.create_attachment(bug.server.auth, bug.id, patch,
                              description, filename, comment,
